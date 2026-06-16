@@ -1,0 +1,61 @@
+grok-plugin-cc (grokconnector)
+Copyright 2026 Hosting Playground Inc
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+================================================================================
+Third-party software
+================================================================================
+
+codex-plugin-cc
+  Copyright 2026 OpenAI
+  https://github.com/openai/codex-plugin-cc
+  Licensed under the Apache License, Version 2.0
+
+  Portions of this project are derived from codex-plugin-cc, including the
+  companion CLI architecture, job tracking and state management, git review
+  helpers, status/result rendering, Claude Code plugin commands, agents,
+  hooks, prompts, and related utilities.
+
+================================================================================
+Modifications
+================================================================================
+
+This project adapts codex-plugin-cc for Grok Build instead of Codex. Notable
+changes include:
+
+  - Replacement of Codex app-server integration with Grok ACP (grok agent stdio)
+  - New modules: acp-client.mjs, grok.mjs, acp-broker.mjs
+  - Grok-specific companion CLI (grok-companion.mjs), skills, and plugin metadata
+  - Prompt-based code review (Grok has no native review/start RPC)
+  - Session resume via ACP session/load instead of Codex thread/resume
+
+Files with substantial derivation from codex-plugin-cc include:
+
+  plugins/grok/scripts/grok-companion.mjs
+  plugins/grok/scripts/acp-broker.mjs
+  plugins/grok/scripts/session-lifecycle-hook.mjs
+  plugins/grok/scripts/stop-review-gate-hook.mjs
+  plugins/grok/scripts/lib/git.mjs
+  plugins/grok/scripts/lib/job-control.mjs
+  plugins/grok/scripts/lib/render.mjs
+  plugins/grok/scripts/lib/broker-lifecycle.mjs
+  plugins/grok/scripts/lib/state.mjs
+  plugins/grok/scripts/lib/tracked-jobs.mjs
+  plugins/grok/commands/
+  plugins/grok/agents/
+  plugins/grok/prompts/
+  plugins/grok/schemas/review-output.schema.json
+  plugins/grok/hooks/hooks.json
+
+This project is not affiliated with, endorsed by, or sponsored by OpenAI or xAI.

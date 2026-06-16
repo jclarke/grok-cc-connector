@@ -1,0 +1,21 @@
+{
+  "name": "grok-build",
+  "owner": {
+    "name": "Hosting Playground Inc"
+  },
+  "metadata": {
+    "description": "Grok Build plugins to use in Claude Code for delegation and code review.",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "grok",
+      "description": "Use Grok Build from Claude Code to review code or delegate tasks.",
+      "version": "0.1.0",
+      "author": {
+        "name": "Hosting Playground Inc"
+      },
+      "source": "./plugins/grok"
+    }
+  ]
+}
