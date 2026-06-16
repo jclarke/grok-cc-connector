@@ -337,6 +337,24 @@ class BrokerGrokAcpClient extends AcpClientBase {
     }
     this.socket.write(`${JSON.stringify(message)}\n`);
   }
+
+  async close() {
+    if (this.closed) {
+      await this.exitPromise;
+      return;
+    }
+
+    this.closed = true;
+
+    const socket = this.socket;
+    if (socket && !socket.destroyed) {
+      socket.end();
+    } else if (!this.exitResolved) {
+      this.handleExit(null);
+    }
+
+    await this.exitPromise;
+  }
 }
 
 export class GrokAcpClient {
