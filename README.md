@@ -4,19 +4,22 @@ Use [Grok Build](https://x.ai/cli) from inside Claude Code for code reviews or t
 
 ## Install
 
+From [GitHub](https://github.com/jclarke/grok-cc-connector):
+
 ```text
-/plugin marketplace add <your-org>/grokconnector
+/plugin marketplace add jclarke/grok-cc-connector
 /plugin install grok@grok-build
 /reload-plugins
 /grok:setup
 ```
 
-For local development from this repo:
+For local development, point the marketplace at your clone instead:
 
 ```text
-/plugin marketplace add /Users/josephclarke/development/grokconnector
+/plugin marketplace add /path/to/grok-cc-connector
 /plugin install grok@grok-build
 /reload-plugins
+/grok:setup
 ```
 
 ## Requirements
