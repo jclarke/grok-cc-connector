@@ -11,8 +11,10 @@ import path from "node:path";
 import process from "node:process";
 
 import { parseArgs } from "./lib/args.mjs";
-import { BROKER_BUSY_RPC_CODE, GrokAcpClient } from "./lib/acp-client.mjs";
-import { parseBrokerEndpoint } from "./lib/broker-endpoint.mjs";
+import { BROKER_BUSY_RPC_CODE, BROKER_UNAUTHORIZED_RPC_CODE, GrokAcpClient } from "./lib/acp-client.mjs";
+import { hardenUnixSocketPermissions, parseBrokerEndpoint } from "./lib/broker-endpoint.mjs";
+
+export { BROKER_UNAUTHORIZED_RPC_CODE };
 
 const STREAMING_METHODS = new Set(["session/prompt"]);
 
@@ -42,15 +44,19 @@ async function main() {
   }
 
   const { options } = parseArgs(argv, {
-    valueOptions: ["cwd", "pid-file", "endpoint", "model", "reasoning-effort"]
+    valueOptions: ["cwd", "pid-file", "endpoint", "model", "reasoning-effort", "auth-token"]
   });
 
   if (!options.endpoint) {
     throw new Error("Missing required --endpoint.");
   }
+  if (!options["auth-token"]) {
+    throw new Error("Missing required --auth-token.");
+  }
 
   const cwd = options.cwd ? path.resolve(process.cwd(), options.cwd) : process.cwd();
   const endpoint = String(options.endpoint);
+  const authToken = String(options["auth-token"]);
   const listenTarget = parseBrokerEndpoint(endpoint);
   const pidFile = options["pid-file"] ? path.resolve(options["pid-file"]) : null;
   writePidFile(pidFile);
@@ -64,6 +70,7 @@ async function main() {
   let activeRequestSocket = null;
   let activeStreamSocket = null;
   const sockets = new Set();
+  const authenticatedSockets = new Set();
 
   function clearSocketOwnership(socket) {
     if (activeRequestSocket === socket) {
@@ -133,6 +140,14 @@ async function main() {
         }
 
         if (message.id !== undefined && message.method === "initialize") {
+          if (message.params?.authToken !== authToken) {
+            send(socket, {
+              id: message.id,
+              error: buildJsonRpcError(BROKER_UNAUTHORIZED_RPC_CODE, "Broker authentication failed.")
+            });
+            continue;
+          }
+          authenticatedSockets.add(socket);
           send(socket, {
             id: message.id,
             result: {
@@ -144,12 +159,27 @@ async function main() {
         }
 
         if (message.id !== undefined && message.method === "broker/shutdown") {
+          if (message.params?.authToken !== authToken) {
+            send(socket, {
+              id: message.id,
+              error: buildJsonRpcError(BROKER_UNAUTHORIZED_RPC_CODE, "Broker authentication failed.")
+            });
+            continue;
+          }
           send(socket, { id: message.id, result: {} });
           await shutdown(server);
           process.exit(0);
         }
 
         if (message.id === undefined) {
+          continue;
+        }
+
+        if (!authenticatedSockets.has(socket)) {
+          send(socket, {
+            id: message.id,
+            error: buildJsonRpcError(BROKER_UNAUTHORIZED_RPC_CODE, "Broker RPC requires authentication.")
+          });
           continue;
         }
 
@@ -195,11 +225,13 @@ async function main() {
 
     socket.on("close", () => {
       sockets.delete(socket);
+      authenticatedSockets.delete(socket);
       clearSocketOwnership(socket);
     });
 
     socket.on("error", () => {
       sockets.delete(socket);
+      authenticatedSockets.delete(socket);
       clearSocketOwnership(socket);
     });
   });
@@ -214,7 +246,11 @@ async function main() {
     process.exit(0);
   });
 
-  server.listen(listenTarget.path);
+  server.listen(listenTarget.path, () => {
+    if (listenTarget.kind === "unix") {
+      hardenUnixSocketPermissions(listenTarget.path);
+    }
+  });
 }
 
 main().catch((error) => {

@@ -35,7 +35,8 @@ Argument handling:
 - Preserve the user's arguments exactly.
 - Do not strip `--wait` or `--background` yourself.
 - Do not add extra review instructions or rewrite the user's intent.
-- The companion script parses `--wait` and `--background`, but Claude Code's `Bash(..., run_in_background: true)` is what actually detaches the run.
+- The companion script does not parse `--wait` or `--background` for review job tracking. Reviews always run as foreground tracked jobs inside the companion.
+- Claude Code's `Bash(..., run_in_background: true)` is what detaches a background review run. `/grok:status` will not track background review runs launched that way.
 - `/grok:review` is native-review only. It does not support staged-only review, unstaged-only review, or extra focus text.
 - If the user needs custom review instructions or more adversarial framing, they should use `/grok:adversarial-review`.
 
@@ -58,4 +59,4 @@ Bash({
 })
 ```
 - Do not call `BashOutput` or wait for completion in this turn.
-- After launching the command, tell the user: "Grok review started in the background. Check `/grok:status` for progress."
+- After launching the command, tell the user: "Grok review started in the background. It is not tracked by `/grok:status`; use `BashOutput` or rerun `/grok:review --wait` if you need the results in this session."

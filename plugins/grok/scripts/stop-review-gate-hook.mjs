@@ -27,7 +27,11 @@ function readHookInput() {
   if (!raw) {
     return {};
   }
-  return JSON.parse(raw);
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return {};
+  }
 }
 
 function emitDecision(payload) {
@@ -180,8 +184,6 @@ function main() {
 
 try {
   main();
-} catch (error) {
-  const message = error instanceof Error ? error.message : String(error);
-  process.stderr.write(`${message}\n`);
-  process.exitCode = 1;
+} catch {
+  process.exit(0);
 }

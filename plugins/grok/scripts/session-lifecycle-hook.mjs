@@ -29,7 +29,11 @@ function readHookInput() {
   if (!raw) {
     return {};
   }
-  return JSON.parse(raw);
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return {};
+  }
 }
 
 function shellEscape(value) {
@@ -96,7 +100,7 @@ async function handleSessionEnd(input) {
       : null);
 
   if (brokerSession?.endpoint) {
-    await sendBrokerShutdown(brokerSession.endpoint);
+    await sendBrokerShutdown(brokerSession.endpoint, brokerSession.authToken ?? null);
   }
 
   cleanupSessionJobs(cwd, input.session_id || process.env[SESSION_ID_ENV]);
@@ -125,7 +129,6 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
-  process.exit(1);
+main().catch(() => {
+  process.exit(0);
 });

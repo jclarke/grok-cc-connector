@@ -2,6 +2,8 @@
 
 Use [Grok Build](https://x.ai/cli) from inside Claude Code for code reviews or to delegate tasks.
 
+**Naming:** The GitHub repository is `grok-cc-connector`. Your local clone may use a different folder name (for example, `grokconnector`). The npm package name is `grok-cc-connector`.
+
 ## Install
 
 From [GitHub](https://github.com/jclarke/grok-cc-connector):
@@ -56,6 +58,14 @@ Examples:
 ## Architecture
 
 The plugin wraps `grok agent stdio` (ACP over JSON-RPC) via `grok-companion.mjs`, mirroring [codex-plugin-cc](https://github.com/openai/codex-plugin-cc).
+
+## Upgrading
+
+If you used an earlier build, **restart Claude Code once** after updating. The broker now runs from a private directory (`~/.grok-companion/broker`) with an auth token instead of a world-readable `/tmp` socket, so any leftover broker session from an older build is rejected until it is recreated. See [SECURITY.md](SECURITY.md#upgrading-from-earlier-versions) for details.
+
+## Security
+
+See [SECURITY.md](SECURITY.md) for the broker threat model, socket permissions, shared-secret authentication, and how to report vulnerabilities.
 
 ## License
 

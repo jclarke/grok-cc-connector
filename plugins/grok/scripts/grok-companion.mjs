@@ -517,7 +517,13 @@ function getJobKindLabel(kind, jobClass) {
   if (kind === "adversarial-review") {
     return "adversarial-review";
   }
-  return jobClass === "review" ? "review" : "rescue";
+  if (jobClass === "review") {
+    return "review";
+  }
+  if (jobClass === "task") {
+    return "task";
+  }
+  return "rescue";
 }
 
 function createCompanionJob({ prefix, kind, title, workspaceRoot, jobClass, summary, write = false }) {
@@ -713,10 +719,10 @@ async function handleTask(argv) {
     resumeLast
   });
 
-  if (options.background) {
-    ensureGrokAvailable(cwd);
-    requireTaskRequest(prompt, resumeLast);
+  ensureGrokAvailable(cwd);
+  requireTaskRequest(prompt, resumeLast);
 
+  if (options.background) {
     const job = buildTaskJob(workspaceRoot, taskMetadata, write);
     const request = buildTaskRequest({
       cwd,

@@ -1,10 +1,16 @@
+// Copyright 2026 Hosting Playground Inc
+// SPDX-License-Identifier: Apache-2.0
+//
+// Portions derived from codex-plugin-cc (Copyright 2026 OpenAI).
+// See NOTICE for details.
+
 import fs from "node:fs";
 import net from "node:net";
 import process from "node:process";
 import { spawn } from "node:child_process";
 import readline from "node:readline";
 
-import { parseBrokerEndpoint } from "./broker-endpoint.mjs";
+import { parseBrokerEndpoint, validateTrustedBrokerEndpoint } from "./broker-endpoint.mjs";
 import { ensureBrokerSession, loadBrokerSession } from "./broker-lifecycle.mjs";
 import { terminateProcessTree } from "./process.mjs";
 
@@ -13,6 +19,8 @@ const PLUGIN_MANIFEST = JSON.parse(fs.readFileSync(PLUGIN_MANIFEST_URL, "utf8"))
 
 export const BROKER_ENDPOINT_ENV = "GROK_COMPANION_ACP_ENDPOINT";
 export const BROKER_BUSY_RPC_CODE = -32001;
+export const BROKER_UNAUTHORIZED_RPC_CODE = -32002;
+export const BROKER_UNAUTHORIZED = BROKER_UNAUTHORIZED_RPC_CODE;
 
 const DEFAULT_CLIENT_INFO = {
   title: "Grok Plugin",
@@ -46,6 +54,7 @@ class AcpClientBase {
     this.lineBuffer = "";
     this.transport = "unknown";
     this.authenticated = false;
+    this.authMethodId = null;
 
     this.exitPromise = new Promise((resolve) => {
       this.resolveExit = resolve;
@@ -282,6 +291,7 @@ class SpawnedGrokAcpClient extends AcpClientBase {
 
     await this.request("authenticate", { methodId, _meta: { headless: true } });
     this.authenticated = true;
+    this.authMethodId = methodId;
   }
 
   sendMessage(message) {
@@ -299,6 +309,7 @@ class BrokerGrokAcpClient extends AcpClientBase {
     super(cwd, options);
     this.transport = "broker";
     this.endpoint = options.brokerEndpoint;
+    this.brokerAuthToken = options.brokerAuthToken ?? null;
   }
 
   async initialize() {
@@ -324,7 +335,8 @@ class BrokerGrokAcpClient extends AcpClientBase {
       clientCapabilities: {
         fs: { readTextFile: true, writeTextFile: true },
         terminal: true
-      }
+      },
+      authToken: this.brokerAuthToken
     });
 
     this.authenticated = true;
@@ -360,9 +372,17 @@ class BrokerGrokAcpClient extends AcpClientBase {
 export class GrokAcpClient {
   static async connect(cwd, options = {}) {
     if (!options.disableBroker) {
-      const brokerEndpoint = options.brokerEndpoint ?? process.env[BROKER_ENDPOINT_ENV] ?? loadBrokerSession(cwd)?.endpoint ?? null;
+      const brokerEndpoint =
+        options.brokerEndpoint ?? process.env[BROKER_ENDPOINT_ENV] ?? loadBrokerSession(cwd)?.endpoint ?? null;
+      const brokerAuthToken =
+        options.brokerAuthToken ?? loadBrokerSession(cwd)?.authToken ?? null;
       if (brokerEndpoint) {
-        const client = new BrokerGrokAcpClient(cwd, { ...options, brokerEndpoint });
+        validateTrustedBrokerEndpoint(brokerEndpoint);
+        const client = new BrokerGrokAcpClient(cwd, {
+          ...options,
+          brokerEndpoint,
+          brokerAuthToken
+        });
         await client.initialize();
         return client;
       }
@@ -375,7 +395,12 @@ export class GrokAcpClient {
           reasoningEffort: options.reasoningEffort ?? null
         });
         if (session?.endpoint) {
-          const client = new BrokerGrokAcpClient(cwd, { ...options, brokerEndpoint: session.endpoint });
+          validateTrustedBrokerEndpoint(session.endpoint);
+          const client = new BrokerGrokAcpClient(cwd, {
+            ...options,
+            brokerEndpoint: session.endpoint,
+            brokerAuthToken: session.authToken ?? null
+          });
           await client.initialize();
           return client;
         }

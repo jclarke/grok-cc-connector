@@ -1,5 +1,5 @@
 {
-  "name": "grok-plugin-cc",
+  "name": "grok-cc-connector",
   "version": "0.1.0",
   "private": true,
   "description": "Use Grok Build from Claude Code to review code or delegate tasks.",

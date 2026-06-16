@@ -1,0 +1,46 @@
+#!/usr/bin/env node
+// Minimal fake `grok agent stdio` for broker smoke tests.
+// Speaks just enough ACP for SpawnedGrokAcpClient.initialize() to resolve:
+// it answers `initialize` (advertising a cached_token auth method) and
+// `authenticate`, and replies `{}` to anything else the broker forwards.
+"use strict";
+
+const readline = require("readline");
+
+const rl = readline.createInterface({ input: process.stdin });
+
+rl.on("line", (line) => {
+  const trimmed = line.trim();
+  if (!trimmed) {
+    return;
+  }
+
+  let message;
+  try {
+    message = JSON.parse(trimmed);
+  } catch {
+    return;
+  }
+
+  // Ignore notifications and server-bound responses.
+  if (message.id === undefined || !message.method) {
+    return;
+  }
+
+  let result = {};
+  if (message.method === "initialize") {
+    result = {
+      protocolVersion: 1,
+      authMethods: [{ id: "cached_token" }],
+      serverInfo: { name: "fake-grok" }
+    };
+  } else if (message.method === "authenticate") {
+    result = {};
+  } else {
+    result = { ok: true };
+  }
+
+  process.stdout.write(`${JSON.stringify({ jsonrpc: "2.0", id: message.id, result })}\n`);
+});
+
+process.stdin.resume();

@@ -95,6 +95,7 @@ async function withAcpClient(cwd, runner, options = {}) {
       model: options.model,
       reasoningEffort: options.reasoningEffort,
       alwaysApprove: options.alwaysApprove,
+      disableBroker: options.disableBroker ?? false,
       reuseExistingBroker: options.reuseExistingBroker ?? true
     });
     return await runner(client);
@@ -293,16 +294,15 @@ export async function getGrokAuthStatus(cwd, options = {}) {
     return await withAcpClient(
       cwd,
       async (client) => {
-        const authMethods = (client.options?.authMethods ?? []).map((method) => method.id);
         return {
           available: true,
           loggedIn: true,
           detail: "Grok authentication succeeded.",
           source: "acp",
-          authMethod: authMethods[0] ?? "cached_token"
+          authMethod: client.authMethodId ?? null
         };
       },
-      { env: options.env, reuseExistingBroker: true }
+      { env: options.env, disableBroker: true }
     );
   } catch (error) {
     return {

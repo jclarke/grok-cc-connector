@@ -1,7 +1,7 @@
 ---
 description: Check whether the local Grok CLI is ready and optionally toggle the stop-time review gate
 argument-hint: '[--enable-review-gate|--disable-review-gate]'
-allowed-tools: Bash(node:*), Bash(npm:*), AskUserQuestion
+allowed-tools: Bash(node:*), Bash(curl:*), Bash(bash:*), AskUserQuestion
 ---
 
 Run:
@@ -10,7 +10,7 @@ Run:
 node "${CLAUDE_PLUGIN_ROOT}/scripts/grok-companion.mjs" setup --json $ARGUMENTS
 ```
 
-If the result says Grok is unavailable and npm is available:
+If the result says Grok is unavailable:
 - Use `AskUserQuestion` exactly once to ask whether Claude should install Grok now.
 - Put the install option first and suffix it with `(Recommended)`.
 - Use these two options:
@@ -19,7 +19,7 @@ If the result says Grok is unavailable and npm is available:
 - If the user chooses install, run:
 
 ```bash
-npm install -g @openai/grok
+curl -fsSL https://x.ai/cli/install.sh | bash
 ```
 
 - Then rerun:
@@ -28,7 +28,7 @@ npm install -g @openai/grok
 node "${CLAUDE_PLUGIN_ROOT}/scripts/grok-companion.mjs" setup --json $ARGUMENTS
 ```
 
-If Grok is already installed or npm is unavailable:
+If Grok is already installed:
 - Do not ask about installation.
 
 Output rules:

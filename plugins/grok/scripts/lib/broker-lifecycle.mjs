@@ -4,22 +4,33 @@
 // Portions derived from codex-plugin-cc (Copyright 2026 OpenAI).
 // See NOTICE for details.
 
+import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import net from "node:net";
-import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { createBrokerEndpoint, parseBrokerEndpoint } from "./broker-endpoint.mjs";
+import {
+  createBrokerEndpoint,
+  ensurePrivateBrokerRoot,
+  hardenUnixSocketPermissions,
+  parseBrokerEndpoint
+} from "./broker-endpoint.mjs";
+import { terminateProcessTree } from "./process.mjs";
 import { resolveStateDir } from "./state.mjs";
 
 export const PID_FILE_ENV = "GROK_COMPANION_ACP_PID_FILE";
 export const LOG_FILE_ENV = "GROK_COMPANION_ACP_LOG_FILE";
 const BROKER_STATE_FILE = "broker.json";
 
+export function createBrokerAuthToken() {
+  return randomBytes(32).toString("base64url");
+}
+
 export function createBrokerSessionDir(prefix = "gxc-") {
-  return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  const rootDir = ensurePrivateBrokerRoot();
+  return fs.mkdtempSync(path.join(rootDir, prefix), { mode: 0o700 });
 }
 
 function connectToEndpoint(endpoint) {
@@ -46,12 +57,18 @@ export async function waitForBrokerEndpoint(endpoint, timeoutMs = 2000) {
   return false;
 }
 
-export async function sendBrokerShutdown(endpoint) {
+export async function sendBrokerShutdown(endpoint, authToken) {
   await new Promise((resolve) => {
     const socket = connectToEndpoint(endpoint);
     socket.setEncoding("utf8");
     socket.on("connect", () => {
-      socket.write(`${JSON.stringify({ id: 1, method: "broker/shutdown", params: {} })}\n`);
+      socket.write(
+        `${JSON.stringify({
+          id: 1,
+          method: "broker/shutdown",
+          params: { authToken: authToken ?? null }
+        })}\n`
+      );
     });
     socket.on("data", () => {
       socket.end();
@@ -75,12 +92,24 @@ export function spawnBrokerProcess({
   endpoint,
   pidFile,
   logFile,
+  authToken,
   model = null,
   reasoningEffort = null,
   env = process.env
 }) {
   const logFd = fs.openSync(logFile, "a");
-  const args = [scriptPath, "serve", "--endpoint", endpoint, "--cwd", cwd, "--pid-file", pidFile];
+  const args = [
+    scriptPath,
+    "serve",
+    "--endpoint",
+    endpoint,
+    "--cwd",
+    cwd,
+    "--pid-file",
+    pidFile,
+    "--auth-token",
+    authToken
+  ];
   if (model) {
     args.push("--model", model);
   }
@@ -142,6 +171,7 @@ async function isBrokerEndpointReady(endpoint) {
 export async function ensureBrokerSession(cwd, options = {}) {
   const requestedModel = options.model ?? null;
   const requestedEffort = options.reasoningEffort ?? null;
+  const killProcess = options.killProcess ?? terminateProcessTree;
   const existing = loadBrokerSession(cwd);
   if (existing && (await isBrokerEndpointReady(existing.endpoint))) {
     if (brokerRuntimeMatches(existing, requestedModel, requestedEffort)) {
@@ -150,13 +180,16 @@ export async function ensureBrokerSession(cwd, options = {}) {
   }
 
   if (existing) {
+    if (existing.endpoint) {
+      await sendBrokerShutdown(existing.endpoint, existing.authToken ?? null);
+    }
     teardownBrokerSession({
       endpoint: existing.endpoint ?? null,
       pidFile: existing.pidFile ?? null,
       logFile: existing.logFile ?? null,
       sessionDir: existing.sessionDir ?? null,
       pid: existing.pid ?? null,
-      killProcess: options.killProcess ?? null
+      killProcess
     });
     clearBrokerSession(cwd);
   }
@@ -166,6 +199,7 @@ export async function ensureBrokerSession(cwd, options = {}) {
   const endpoint = endpointFactory(sessionDir, options.platform);
   const pidFile = path.join(sessionDir, "broker.pid");
   const logFile = path.join(sessionDir, "broker.log");
+  const authToken = createBrokerAuthToken();
   const scriptPath =
     options.scriptPath ?? fileURLToPath(new URL("../acp-broker.mjs", import.meta.url));
 
@@ -175,6 +209,7 @@ export async function ensureBrokerSession(cwd, options = {}) {
     endpoint,
     pidFile,
     logFile,
+    authToken,
     model: requestedModel,
     reasoningEffort: requestedEffort,
     env: options.env ?? process.env
@@ -188,9 +223,18 @@ export async function ensureBrokerSession(cwd, options = {}) {
       logFile,
       sessionDir,
       pid: child.pid ?? null,
-      killProcess: options.killProcess ?? null
+      killProcess
     });
     return null;
+  }
+
+  try {
+    const target = parseBrokerEndpoint(endpoint);
+    if (target.kind === "unix") {
+      hardenUnixSocketPermissions(target.path);
+    }
+  } catch {
+    // Ignore malformed endpoints after the broker is ready.
   }
 
   const session = {
@@ -199,6 +243,7 @@ export async function ensureBrokerSession(cwd, options = {}) {
     logFile,
     sessionDir,
     pid: child.pid ?? null,
+    authToken,
     model: requestedModel,
     reasoningEffort: requestedEffort
   };
@@ -206,10 +251,30 @@ export async function ensureBrokerSession(cwd, options = {}) {
   return session;
 }
 
-export function teardownBrokerSession({ endpoint = null, pidFile, logFile, sessionDir = null, pid = null, killProcess = null }) {
-  if (Number.isFinite(pid) && killProcess) {
+export function teardownBrokerSession({
+  endpoint = null,
+  pidFile,
+  logFile,
+  sessionDir = null,
+  pid = null,
+  killProcess = terminateProcessTree
+}) {
+  let resolvedPid = pid;
+  if (!Number.isFinite(resolvedPid) && pidFile && fs.existsSync(pidFile)) {
     try {
-      killProcess(pid);
+      const pidText = fs.readFileSync(pidFile, "utf8").trim();
+      const parsed = Number.parseInt(pidText, 10);
+      if (Number.isFinite(parsed)) {
+        resolvedPid = parsed;
+      }
+    } catch {
+      // Ignore unreadable pid files.
+    }
+  }
+
+  if (Number.isFinite(resolvedPid)) {
+    try {
+      killProcess(resolvedPid);
     } catch {
       // Ignore missing broker processes.
     }
